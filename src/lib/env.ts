@@ -4,14 +4,17 @@ const envSchema = z.object({
   NODE_ENV: z
     .enum(['development', 'production', 'test'])
     .default('development'),
-  VERCEL_URL: z.string().optional(),
-  NEXT_PUBLIC_APP_URL: z.string().url().optional(),
+  // 서버 전용: 노션 Integration Token / 견적서·품목 데이터 소스 ID
+  NOTION_API_KEY: z.string().min(1).optional(),
+  NOTION_QUOTES_DATA_SOURCE_ID: z.string().min(1).optional(),
+  NOTION_ITEMS_DATA_SOURCE_ID: z.string().min(1).optional(),
 })
 
 export const env = envSchema.parse({
   NODE_ENV: process.env.NODE_ENV,
-  VERCEL_URL: process.env.VERCEL_URL,
-  NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
+  NOTION_API_KEY: process.env.NOTION_API_KEY,
+  NOTION_QUOTES_DATA_SOURCE_ID: process.env.NOTION_QUOTES_DATA_SOURCE_ID,
+  NOTION_ITEMS_DATA_SOURCE_ID: process.env.NOTION_ITEMS_DATA_SOURCE_ID,
 })
 
 export type Env = z.infer<typeof envSchema>
