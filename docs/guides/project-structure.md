@@ -26,17 +26,18 @@ claude-nextjs-starters/
 
 ```
 src/app/
-├── layout.tsx           # 🎨 루트 레이아웃 (전역 설정)
-├── page.tsx            # 🏠 홈페이지 (/)
-├── globals.css         # 🎨 전역 CSS 스타일
-├── favicon.ico         # 🔖 파비콘
-├── login/              # 🔐 로그인 페이지
-│   └── page.tsx
-└── signup/             # ✍️ 회원가입 페이지
-    └── page.tsx
+├── layout.tsx              # 🎨 루트 레이아웃 (ThemeProvider, 메타데이터)
+├── page.tsx                # 🏠 루트 (링크 접속 안내)
+├── globals.css             # 🎨 전역 CSS 스타일
+├── favicon.ico             # 🔖 파비콘
+└── quote/[token]/          # 📄 견적서 상세 (전용 링크 진입)
+    ├── page.tsx            # 견적서 조회/표시
+    ├── error.tsx           # 조회/검증 실패 안내 + 다시 시도
+    └── not-found.tsx       # 유효하지 않은 링크 안내
 ```
 
 **🚀 App Router 규칙:**
+
 - `page.tsx`: 해당 경로의 메인 페이지
 - `layout.tsx`: 레이아웃 컴포넌트 (자식 페이지 감쌈)
 - `loading.tsx`: 로딩 UI (필요시)
@@ -47,28 +48,12 @@ src/app/
 
 ```
 src/components/
-├── ui/                 # 🎛️ 기본 UI 컴포넌트 (shadcn/ui)
-│   ├── button.tsx     # 버튼
-│   ├── card.tsx       # 카드
-│   ├── form.tsx       # 폼 관련
-│   ├── input.tsx      # 입력 필드
-│   └── ...           # 기타 UI 컴포넌트
-├── layout/            # 🏗️ 레이아웃 컴포넌트
-│   ├── container.tsx  # 컨테이너 래퍼
-│   ├── header.tsx     # 헤더
-│   └── footer.tsx     # 푸터
-├── navigation/        # 🧭 네비게이션 컴포넌트
-│   ├── main-nav.tsx   # 메인 네비게이션
-│   └── mobile-nav.tsx # 모바일 네비게이션
-├── sections/          # 📄 페이지 섹션 컴포넌트
-│   ├── hero.tsx       # 히어로 섹션
-│   ├── features.tsx   # 기능 소개
-│   └── cta.tsx        # Call-to-Action
-├── providers/         # 🔧 Context 프로바이더
+├── ui/                 # 🎛️ shadcn/ui (alert, badge, button, card, dropdown-menu, separator)
+├── layout/
+│   └── container.tsx   # 컨테이너 래퍼
+├── providers/
 │   └── theme-provider.tsx
-├── login-form.tsx     # 🔐 로그인 폼
-├── signup-form.tsx    # ✍️ 회원가입 폼
-└── theme-toggle.tsx   # 🌓 테마 토글
+└── theme-toggle.tsx    # 🌓 테마 토글 (인쇄 시 숨김)
 ```
 
 **🧩 컴포넌트 분류 규칙:**
@@ -107,6 +92,7 @@ src/lib/
 ```
 
 **📚 lib/ 폴더 확장 가이드:**
+
 ```
 src/lib/
 ├── utils.ts           # 공통 유틸리티
@@ -145,13 +131,13 @@ userprofile.tsx         # 소문자만 (금지)
 
 ```typescript
 // ✅ 올바른 컴포넌트 네이밍
-export function UserProfile() { }     // PascalCase
-export function LoginForm() { }       // PascalCase
-export function APIEndpoint() { }     // 약어도 PascalCase
+export function UserProfile() {} // PascalCase
+export function LoginForm() {} // PascalCase
+export function APIEndpoint() {} // 약어도 PascalCase
 
 // ❌ 잘못된 컴포넌트 네이밍
-export function userProfile() { }     // camelCase (금지)
-export function login_form() { }      // snake_case (금지)
+export function userProfile() {} // camelCase (금지)
+export function login_form() {} // snake_case (금지)
 ```
 
 ### 폴더 네이밍
@@ -183,6 +169,7 @@ import { cn } from '../../lib/utils'
 ```
 
 **📍 정의된 별칭:**
+
 - `@/components` → `src/components`
 - `@/lib` → `src/lib`
 - `@/hooks` → `src/hooks`
@@ -238,10 +225,12 @@ src/lib/api-utils.ts        # 새 파일 생성
 ## 🎯 코드 조직 베스트 프랙티스
 
 ### 1. 단일 책임 원칙
+
 - 하나의 파일은 하나의 주요 기능만 담당
 - 관련된 타입과 유틸리티는 같은 파일에 포함 가능
 
 ### 2. 의존성 순서
+
 ```typescript
 // 1. 외부 라이브러리
 import React from 'react'
@@ -256,19 +245,21 @@ import './component.css'
 ```
 
 ### 3. Export 규칙
+
 ```typescript
 // ✅ Named export 사용 (권장)
-export function LoginForm() { }
+export function LoginForm() {}
 
 // ✅ Default export (페이지 컴포넌트)
-export default function LoginPage() { }
+export default function LoginPage() {}
 
 // ❌ 혼재 사용 지양
-export function LoginForm() { }
-export default LoginForm  // 같은 컴포넌트를 두 방식으로 export
+export function LoginForm() {}
+export default LoginForm // 같은 컴포넌트를 두 방식으로 export
 ```
 
 ### 4. 파일 크기 관리
+
 - 단일 파일: 300줄 이하 권장
 - 300줄 초과 시 분할 고려
 - 관련 기능별로 분리
@@ -299,8 +290,8 @@ export function SuperMegaComponent() {
 }
 
 // 혼재된 import
-import Button from '@/components/ui/button'  // default
-import { Card } from '@/components/ui/card'  // named
+import Button from '@/components/ui/button' // default
+import { Card } from '@/components/ui/card' // named
 
 // 깊은 상대 경로
 import { utils } from '../../../../../lib/utils'

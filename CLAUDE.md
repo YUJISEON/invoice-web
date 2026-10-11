@@ -1,19 +1,26 @@
 # 🤖 Claude Code 개발 지침
 
-**claude-nextjs-starters**는 Next.js 15.5.3 + React 19 기반 모던 웹 애플리케이션 스타터 템플릿입니다.
+**invoice-web**은 노션에 작성한 견적서를 클라이언트가 전용 링크(`/quote/[token]`)로 확인하고 PDF로 저장하는 견적서 웹 뷰어(MVP)입니다. 요구사항은 `@/docs/PRD.md`를 기준으로 합니다.
+
+# Project Context
+
+- PRD 문서: @docs/PRD.md
+- 개발 로드맵: @docs/ROADMAP.md
 
 ## 🛠️ 핵심 기술 스택
 
 - **Framework**: Next.js 15.5.3 (App Router + Turbopack)
 - **Runtime**: React 19.1.0 + TypeScript 5
 - **Styling**: TailwindCSS v4 + shadcn/ui (new-york style)
-- **Forms**: React Hook Form + Zod + Server Actions
+- **Validation**: Zod (노션 응답 검증)
+- **Data**: Notion API (`@notionhq/client` v5, 서버 전용)
 - **UI Components**: Radix UI + Lucide Icons
 - **Development**: ESLint + Prettier + Husky + lint-staged
 
 ## 📚 개발 가이드
 
 - **🗺️ 개발 로드맵**: `@/docs/ROADMAP.md`
+- **🗄️ 노션 연동 가이드**: `@/docs/guides/notion-api-database.md`
 - **📋 프로젝트 요구사항**: `@/docs/PRD.md`
 - **📁 프로젝트 구조**: `@/docs/guides/project-structure.md`
 - **🎨 스타일링 가이드**: `@/docs/guides/styling-guide.md`
