@@ -42,3 +42,6 @@ next-env.d.ts
 
 # 예시 파일은 커밋 허용
 !.env.example
+
+# Shrimp Task Manager 작업 데이터(로컬 전용)
+shrimp_data/
