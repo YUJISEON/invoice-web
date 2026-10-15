@@ -14,9 +14,9 @@
 
 ## 진행 현황
 
-- 전체: 1 / 18 Task 완료
+- 전체: 2 / 18 Task 완료
 - 현재 Phase: Phase 1
-- 최종 업데이트: 2026-10-11
+- 최종 업데이트: 2026-10-15
 
 ## 현재 코드 상태 (2026-10-11 확인)
 
@@ -88,7 +88,7 @@ PRD의 "가정 / 결정 필요" 항목입니다. 노션 템플릿이 확정되�
   - ⚠️ 테스트 근거 미기록: 파일 존재 기준으로 완료 처리됨. Task 007에서 오류 화면을, Task 008에서 라우트 전반을 Playwright MCP로 회귀 확인
   - 관련 기능: F001, F004
 
-- **Task 002: 견적서 도메인 타입과 Zod 스키마를 정의해 화면·조회 계층의 계약 확정** - 우선순위
+- **Task 002: 견적서 도메인 타입과 Zod 스키마를 정의해 화면·조회 계층의 계약 확정** ✅ - 완료
   - `src/lib/schemas/quote.ts`에 `quoteItemSchema`, `quoteSchema`, `Quote`/`QuoteItem` 타입 정의
   - 필드: token, quoteNumber, clientName, contactName(nullable), issuedAt/expiresAt(ISO, nullable), items[], memo(nullable)
   - 합계 필드 구조 확정(⚠️ 결정 필요: 합계 원본) 후 스키마에 반영
@@ -101,7 +101,8 @@ PRD의 "가정 / 결정 필요" 항목입니다. 노션 템플릿이 확정되�
 
 ### Phase 2: UI/UX 완성 (더미 데이터)
 
-- **Task 003: 상태별 더미 견적서 픽스처를 만들어 UI 개발·검증 기반 마련**
+- **Task 003: 상태별 더미 견적서 픽스처를 만들어 UI 개발·검증 기반 마련** - 우선순위
+  - ⚠️ 구현 완료, 테스트 일부 미수행(2026-10-15): curl로 `dummy-*` 7종 200, `dummy-broken` 500, 비더미 404, production 빌드에서 더미 토큰 404 확인. Playwright MCP 연결 실패로 오류 화면(`error.tsx`) DOM·내부 메시지 미노출 확인은 보류 → 해결 후 ✅
   - `src/lib/mocks/quote.ts`에 픽스처 정의: `dummy-valid`(정상), `dummy-expired`(어제 만료), `dummy-expires-today`(당일), `dummy-no-expiry`(유효기간 null), `dummy-no-memo`(비고·담당자 없음), `dummy-many-items`(20건), `dummy-long-text`(긴 텍스트), `dummy-broken`(스키마 위반)
   - 더미 토큰 진입은 `NODE_ENV !== 'production'`에서만 허용하고 Phase 3에서 제거 대상임을 `TODO`로 표기
   - 테스트 (Playwright MCP, 구현 후 필수):
