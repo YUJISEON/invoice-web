@@ -1,13 +1,19 @@
+import { notFound } from 'next/navigation'
+
 import { Container } from '@/components/layout/container'
 import { ThemeToggle } from '@/components/theme-toggle'
+import { getMockQuote } from '@/lib/mocks/quote'
 
 interface QuotePageProps {
   params: Promise<{ token: string }>
 }
 
-// TODO(F001, F002, F010): 토큰으로 노션 견적서 조회 → Zod 검증 → 화면 표시
+// TODO(Task 004): QuoteView로 교체. Task 010: getQuoteByToken으로 교체 (F001, F002, F010)
 export default async function QuotePage({ params }: QuotePageProps) {
   const { token } = await params
+
+  const quote = getMockQuote(token)
+  if (!quote) notFound()
 
   return (
     <main className="py-10">
@@ -17,7 +23,7 @@ export default async function QuotePage({ params }: QuotePageProps) {
         </div>
         <h1 className="mt-6 text-2xl font-semibold">견적서</h1>
         <p className="text-muted-foreground mt-2 text-sm">
-          토큰: {token.slice(0, 4)}…
+          {quote.quoteNumber}
         </p>
       </Container>
     </main>
