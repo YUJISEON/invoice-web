@@ -14,21 +14,21 @@
 
 ## 진행 현황
 
-- 전체: 2 / 18 Task 완료
-- 현재 Phase: Phase 1
-- 최종 업데이트: 2026-10-15
+- 전체: 17 / 18 Task 완료
+- 현재 Phase: Phase 4
+- 최종 업데이트: 2026-11-01
 
-## 현재 코드 상태 (2026-10-11 확인)
+## 현재 코드 상태 (2026-11-01 확인)
 
-| 구분        | 이미 존재                                                                                               | 아직 없음                                                       |
-| ----------- | ------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
-| 라우트      | `src/app/quote/[token]/page.tsx`(토큰 앞 4자만 표시하는 placeholder), `error.tsx`, `not-found.tsx`, `/` | 견적서 본문 UI, 만료 배너, PDF 버튼                             |
-| 환경변수    | `src/lib/env.ts`(Notion 3종, optional), `.env.example`                                                  | 필수값 검증, `server-only`                                      |
-| 의존성      | `@notionhq/client` ^5.27, `zod` ^4.1, `next-themes`, `lucide-react`                                     | `server-only` 패키지                                            |
-| UI 컴포넌트 | `button`, `card`, `badge`, `alert`, `separator`, `dropdown-menu`, `Container`, `ThemeToggle`            | 견적서 전용 컴포넌트(`src/components/quote/`), `table` 컴포넌트 |
-| 데이터 계층 | -                                                                                                       | `src/lib/schemas/quote.ts`, `src/lib/notion.ts`, 매퍼, 픽스처   |
-| 인쇄 스타일 | 페이지에 `print:hidden`(ThemeToggle) 1건                                                                | `@page`/인쇄 전용 레이아웃                                      |
-| 테스트/검증 | `npm run check-all`(typecheck + lint + format:check)                                                    | 자동화 테스트 러너 없음 → 검증은 Playwright MCP 시나리오로 수행 |
+| 구분        | 이미 존재                                                                                                                                                                                                                                                    | 아직 없음                                                                                 |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------- |
+| 라우트      | `/quote/[token]`(`page.tsx`는 `getQuoteByToken` + `QuoteView`, `force-dynamic`, `error.tsx`, `not-found.tsx`), 루트 `not-found.tsx`, `/`                                                                                                                     | `loading.tsx`                                                                             |
+| 환경변수    | `src/lib/env.ts`(Notion 3종 필수, 누락 시 변수 이름만 알리는 설정 오류), `.env.example`                                                                                                                                                                      | -                                                                                         |
+| 의존성      | `@notionhq/client` ^5.27, `zod` ^4.1, `server-only`, `next-themes`, `lucide-react`                                                                                                                                                                           | -                                                                                         |
+| UI 컴포넌트 | `button`, `card`, `badge`, `alert`, `separator`, `dropdown-menu`, `table`, `Container`, `ThemeToggle`, `src/components/quote/`(`quote-view`, `quote-items-table`, `expired-banner`, `print-button`, `quote-error-layout`)                                    | -                                                                                         |
+| 데이터 계층 | `src/lib/schemas/quote.ts`(`total`·`status`·`tokenSchema`, `token` 필드 없음), `src/lib/format.ts`, `src/lib/quote-status.ts`, `src/lib/notion.ts`(`getQuoteByToken`, 품목 조회·relation 순서 정렬), `src/lib/notion-mappers.ts`, `src/lib/notion-errors.ts` | -                                                                                         |
+| 인쇄 스타일 | `globals.css`의 `@page` A4·다크 → 라이트 토큰 복원·표 헤더 반복·행 `break-inside: avoid`, `print:hidden`(버튼·ThemeToggle)                                                                                                                                   | -                                                                                         |
+| 테스트/검증 | `npm run check-all`(typecheck + lint + format:check), Playwright MCP(연결 시 브라우저 검증)                                                                                                                                                                  | 자동화 테스트 러너 없음 → 검증은 Playwright MCP 시나리오와 `tasks/XXX-*.md` 기록으로 수행 |
 
 ## 개발 워크플로우
 
@@ -67,31 +67,31 @@ Phase 3의 모든 테스트가 사용합니다. 토큰은 서로 다른 16자 �
 
 PRD의 "가정 / 결정 필요" 항목입니다. 노션 템플릿이 확정되기 전까지 Phase 3 Task는 아래 가정으로 진행하되, 결정이 바뀌면 영향 Task를 다시 엽니다.
 
-| 항목                        | 현재 가정                                                                                                  | 영향 Task          | 결정 시점        |
-| --------------------------- | ---------------------------------------------------------------------------------------------------------- | ------------------ | ---------------- |
-| 노션 속성명/타입            | `docs/PRD@old.md` 가정값(토큰·견적번호·고객사명·담당자명·발행일·유효기간·비고). 실제 템플릿 미확인         | 002, 009, 010, 012 | Task 009 착수 전 |
-| 품목 모델링                 | 별도 품목 DB + Relation(견적서 1 : 품목 N). 대안: 본문 표 블록, JSON 속성                                  | 002, 009, 011      | Task 009 착수 전 |
-| 합계(소계/부가세/총액) 원본 | 미정. 임시로 품목 `amount` 합산을 앱에서 계산해 표시. 노션 Formula/Rollup이 원본이면 해당 값을 읽도록 변경 | 002, 004, 011, 014 | Task 002 착수 전 |
-| 만료 시 금액 노출           | 배너만 표시하고 금액은 노출                                                                                | 005, 013, 014      | Task 005 착수 전 |
-| 통화                        | 단일 통화 KRW                                                                                              | 004                | -                |
-| 토큰 규칙                   | 노션에 수동 입력한 충분히 긴 랜덤 문자열(가이드 기준 `[A-Za-z0-9_-]{16,128}`)                              | 010, 017           | Task 010 착수 전 |
+| 항목              | 현재 가정                                                                                                                                                                                                                                                                                                  | 영향 Task          | 결정 시점        |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------ | ---------------- |
+| 노션 속성명/타입  | **확정(2026-11-01, Notion API 스키마 확인)**: 견적서 DB `견적서 번호`(title)·`클라이언트명`·`담당자명`·`토큰`·`비고`(text)·`발행일`·`유효기간`(date)·`총 금액`(number)·`상태`(status: 대기/승인/거절)·`항목`(relation). 품목 DB `항목명`(title)·`수량`·`단가`(number)·`금액`(formula)·`Invoices`(relation) | 002, 009, 010, 012 | Task 009 착수 전 |
+| 품목 모델링       | 별도 품목 DB + Relation(견적서 1 : 품목 N). 대안: 본문 표 블록, JSON 속성                                                                                                                                                                                                                                  | 002, 009, 011      | Task 009 착수 전 |
+| 합계 원본         | **확정(2026-11-01)**: 노션 `총 금액`을 `total`로 읽어 표시. 품목 `amount` 합산은 불일치 감지용 교차 검증만. 소계/부가세 없음                                                                                                                                                                               | 002, 004, 011, 014 | 확정             |
+| 만료 시 금액 노출 | 배너만 표시하고 금액은 노출                                                                                                                                                                                                                                                                                | 005, 013, 014      | Task 005 착수 전 |
+| 통화              | 단일 통화 KRW                                                                                                                                                                                                                                                                                              | 004                | -                |
+| 토큰 규칙         | 노션에 수동 입력한 충분히 긴 랜덤 문자열(가이드 기준 `[A-Za-z0-9_-]{16,128}`)                                                                                                                                                                                                                              | 010, 017           | Task 010 착수 전 |
 
 ## 개발 단계
 
-### Phase 1: 애플리케이션 골격
+### Phase 1: 애플리케이션 골격 ✅
 
 - **Task 001: 견적서 라우트와 오류 화면 골격, 환경변수 구조 구성** ✅ - 완료
   - ✅ `/quote/[token]` 동적 라우트(Server Component, `params` Promise) 생성
   - ✅ `error.tsx`(다시 시도 버튼), `not-found.tsx`(유효하지 않은 링크) 뼈대 생성
   - ✅ `src/lib/env.ts`에 `NOTION_API_KEY`, `NOTION_QUOTES_DATA_SOURCE_ID`, `NOTION_ITEMS_DATA_SOURCE_ID` 추가, `.env.example` 작성
   - ✅ 루트 레이아웃 `noindex` 메타데이터, 홈(`/`) 안내 화면
-  - ⚠️ 테스트 근거 미기록: 파일 존재 기준으로 완료 처리됨. Task 007에서 오류 화면을, Task 008에서 라우트 전반을 Playwright MCP로 회귀 확인
+  - ✅ 테스트 통과(2026-11-01): production(`npm run build` + `npm start`)에서 `/` 200, `noindex` 메타, 존재하지 않는 경로 404, 필수 파일(`error.tsx`, `not-found.tsx`, `env.ts` 3종, `.env.example`) 존재, Task 007·008에서 오류 화면·라우트 회귀 확인. 참고: 전용 `tasks/001-*.md` 기록 파일은 없음
   - 관련 기능: F001, F004
 
 - **Task 002: 견적서 도메인 타입과 Zod 스키마를 정의해 화면·조회 계층의 계약 확정** ✅ - 완료
   - `src/lib/schemas/quote.ts`에 `quoteItemSchema`, `quoteSchema`, `Quote`/`QuoteItem` 타입 정의
   - 필드: token, quoteNumber, clientName, contactName(nullable), issuedAt/expiresAt(ISO, nullable), items[], memo(nullable)
-  - 합계 필드 구조 확정(⚠️ 결정 필요: 합계 원본) 후 스키마에 반영
+  - ✅ 합계 필드 구조 확정(결정 완료: 노션 `총 금액` = `total`) 후 스키마에 반영
   - `src/lib/format.ts`에 원화·날짜 포맷 유틸 정의. 기대값: `1234567` → `1,234,567원`, `2026-10-11` → `2026-10-11`, `null` → `-`
   - 테스트 (구현 후 필수):
     - 정상/경계: Playwright 직접 검증 해당 없음 — 타입·스키마·순수 유틸이라 브라우저 진입점이 없음. 스키마 `parse`는 Task 003(픽스처), 포맷 유틸 출력은 Task 004(화면)에서 위 기대값으로 검증
@@ -99,12 +99,12 @@ PRD의 "가정 / 결정 필요" 항목입니다. 노션 템플릿이 확정되�
     - 정적 검사: `npm run check-all` 통과, 스키마 필수/nullable 필드가 PRD 데이터 모델과 일치
   - 관련 기능: F010, F002
 
-### Phase 2: UI/UX 완성 (더미 데이터)
+### Phase 2: UI/UX 완성 (더미 데이터) ✅
 
-- **Task 003: 상태별 더미 견적서 픽스처를 만들어 UI 개발·검증 기반 마련** - 우선순위
-  - ⚠️ 구현 완료, 테스트 일부 미수행(2026-10-15): curl로 `dummy-*` 7종 200, `dummy-broken` 500, 비더미 404, production 빌드에서 더미 토큰 404 확인. Playwright MCP 연결 실패로 오류 화면(`error.tsx`) DOM·내부 메시지 미노출 확인은 보류 → 해결 후 ✅
-  - `src/lib/mocks/quote.ts`에 픽스처 정의: `dummy-valid`(정상), `dummy-expired`(어제 만료), `dummy-expires-today`(당일), `dummy-no-expiry`(유효기간 null), `dummy-no-memo`(비고·담당자 없음), `dummy-many-items`(20건), `dummy-long-text`(긴 텍스트), `dummy-broken`(스키마 위반)
-  - 더미 토큰 진입은 `NODE_ENV !== 'production'`에서만 허용하고 Phase 3에서 제거 대상임을 `TODO`로 표기
+- **Task 003: 상태별 더미 견적서 픽스처를 만들어 UI 개발·검증 기반 마련** ✅ - 완료
+  - ✅ 테스트 통과(2026-11-01): curl로 `dummy-*` 7종 200, `dummy-broken` 500, 비더미 404, production 빌드에서 더미 토큰 404, Playwright로 오류 화면 DOM에 내부 메시지 없음 확인. 참고: 개발 모드 브라우저 콘솔에는 ZodError가 찍힘(Task 007 참고)
+  - ✅ `src/lib/mocks/quote.ts`에 픽스처 정의: `dummy-valid`(정상), `dummy-expired`(어제 만료), `dummy-expires-today`(당일), `dummy-no-expiry`(유효기간 null), `dummy-no-memo`(비고·담당자 없음), `dummy-many-items`(20건), `dummy-long-text`(긴 텍스트), `dummy-broken`(스키마 위반)
+  - ✅ 더미 토큰 진입은 `NODE_ENV !== 'production'`에서만 허용하고 Phase 3에서 제거 대상임을 `TODO`로 표기
   - 테스트 (Playwright MCP, 구현 후 필수):
     - 정상: `/quote/dummy-valid` 접속 → 200, 페이지에 견적번호 표시(`browser_navigate`, `browser_snapshot`)
     - 경계: 유효한 픽스처 7종이 `quoteSchema.parse`를 통과해 각 토큰 접속 시 화면이 렌더됨(오류 화면 아님)
@@ -113,11 +113,12 @@ PRD의 "가정 / 결정 필요" 항목입니다. 노션 템플릿이 확정되�
     - 정적 검사: `npm run check-all` 통과
   - 관련 기능: F002, F004, F010
 
-- **Task 004: 견적서 상세 화면 컴포넌트를 구현해 클라이언트가 확인할 핵심 내용 표시**
-  - `src/components/quote/quote-view.tsx`: 견적번호·발행일·유효기간 헤더, 고객사/담당자 블록
-  - `src/components/quote/quote-items-table.tsx`: 품목명·수량·단가·금액 표, 숫자 우측 정렬, KRW 포맷(Task 002 유틸)
-  - 합계 영역(Task 002 결정 반영)과 비고 섹션(값이 없으면 섹션 자체 숨김)
-  - shadcn `table` 컴포넌트 추가(`npx shadcn@latest add table`), 파일명 kebab-case/컴포넌트 PascalCase 준수, placeholder의 토큰 표시 제거
+- **Task 004: 견적서 상세 화면 컴포넌트를 구현해 클라이언트가 확인할 핵심 내용 표시** ✅ - 완료
+  - ✅ 테스트 통과(2026-11-01): Playwright로 375/768/1280px, 긴 텍스트·10자리 금액 가로 넘침 없음, 토큰 원문 미표시 확인. 구현 후 모바일(`sm` 미만)은 품목별 리스트, `sm` 이상은 표로 개선
+  - ✅ `src/components/quote/quote-view.tsx`: 견적번호·발행일·유효기간 헤더, 고객사/담당자 블록
+  - ✅ `src/components/quote/quote-items-table.tsx`: 품목명·수량·단가·금액 표, 숫자 우측 정렬, KRW 포맷(Task 002 유틸)
+  - ✅ 합계 영역(노션 `총 금액` = `quote.total`)과 비고 섹션(값이 없으면 섹션 자체 숨김)
+  - ✅ shadcn `table` 컴포넌트 추가(`npx shadcn@latest add table`), 파일명 kebab-case/컴포넌트 PascalCase 준수, placeholder의 토큰 표시 제거
   - 테스트 (Playwright MCP, 구현 후 필수):
     - 정상: `/quote/dummy-valid` → 견적번호·발행일·유효기간·고객사·담당자·품목 행·합계가 픽스처 값과 일치(`browser_snapshot`), 금액이 `1,234,567원` 형식
     - 경계: `dummy-no-memo` → 비고 섹션이 DOM에 없음, 담당자명 자리에 `-` / `dummy-many-items` → 품목 행 20개 / `dummy-long-text` → `browser_evaluate`로 `scrollWidth <= clientWidth`(가로 넘침 없음) / 금액 0원·큰 금액(10자리) 포맷 확인
@@ -126,10 +127,11 @@ PRD의 "가정 / 결정 필요" 항목입니다. 노션 템플릿이 확정되�
     - 정적 검사: `npm run check-all` 통과
   - 관련 기능: F002
 
-- **Task 005: 유효기간 만료 판정과 안내 배너를 구현해 만료 견적서 상태 구분**
-  - `src/lib/quote-status.ts`: `isExpired(expiresAt, now)`(한국 시간 기준 날짜 비교, 만료일 당일은 유효) 구현
-  - `src/components/quote/expired-banner.tsx`: shadcn `Alert` 기반 상단 배너, 조회는 허용
-  - 인쇄 시에도 만료 배너가 출력에 포함되는지 결정 후 반영
+- **Task 005: 유효기간 만료 판정과 안내 배너를 구현해 만료 견적서 상태 구분** ✅ - 완료
+  - ✅ 테스트 통과(2026-11-01): `dummy-valid`·`dummy-expires-today`·`dummy-no-expiry` 배너 없음, `dummy-expired` 배너 표시, 만료 화면에도 금액 노출, print 미디어에서도 배너 포함
+  - ✅ `src/lib/quote-status.ts`: `isExpired(expiresAt, now)`(한국 시간 기준 날짜 비교, 만료일 당일은 유효) 구현
+  - ✅ `src/components/quote/expired-banner.tsx`: shadcn `Alert` 기반 상단 배너, 조회는 허용
+  - ✅ 인쇄 시에도 만료 배너가 출력에 포함되는지 결정 후 반영(결정: 포함)
   - ⚠️ 결정 필요: 만료 시 금액 노출 여부(현재 가정: 노출)
   - 테스트 (Playwright MCP, 구현 후 필수):
     - 정상: `dummy-valid`(유효기간 미래) → 만료 배너 없음
@@ -139,10 +141,11 @@ PRD의 "가정 / 결정 필요" 항목입니다. 노션 템플릿이 확정되�
     - 정적 검사: `npm run check-all` 통과
   - 관련 기능: F004
 
-- **Task 006: PDF 다운로드 버튼과 인쇄 전용 스타일을 구현해 브라우저 인쇄로 PDF 저장 지원**
-  - `src/components/quote/print-button.tsx`(Client Component): `window.print()` 호출, `lucide-react` 아이콘
-  - 인쇄 시 버튼·ThemeToggle 등 UI 숨김(`print:hidden`), 다크 테마여도 흰 배경/검정 글자로 출력
-  - `globals.css`에 `@page { size: A4; margin }` 및 표 행 `break-inside: avoid`, 긴 표의 헤더 반복 처리
+- **Task 006: PDF 다운로드 버튼과 인쇄 전용 스타일을 구현해 브라우저 인쇄로 PDF 저장 지원** ✅ - 완료
+  - ✅ 테스트 통과(2026-11-01): `window.print` 스텁 후 클릭·Enter 모두 호출, print에서 버튼·토글 숨김·`thead` 헤더 반복·행 `break-inside: avoid`, 다크 + print 흰 배경
+  - ✅ `src/components/quote/print-button.tsx`(Client Component): `window.print()` 호출, `lucide-react` 아이콘
+  - ✅ 인쇄 시 버튼·ThemeToggle 등 UI 숨김(`print:hidden`), 다크 테마여도 흰 배경/검정 글자로 출력
+  - ✅ `globals.css`에 `@page { size: A4; margin }` 및 표 행 `break-inside: avoid`, 긴 표의 헤더 반복 처리
   - 테스트 (Playwright MCP, 구현 후 필수):
     - 정상: `browser_evaluate`로 `window.print`를 스텁 후 "PDF 다운로드" 클릭(`browser_click`) → 스텁 1회 호출
     - 경계: `dummy-many-items`를 `browser_emulate_media`(media=print)로 확인 → 표 헤더가 `table-header-group`, 행이 `break-inside: avoid`(`getComputedStyle`) / 다크 모드 + print → 배경 흰색·글자 어두운색
@@ -151,11 +154,12 @@ PRD의 "가정 / 결정 필요" 항목입니다. 노션 템플릿이 확정되�
     - 정적 검사: `npm run check-all` 통과
   - 관련 기능: F003
 
-- **Task 007: 오류 안내 화면을 완성해 원인별 안내와 다시 시도 동선 제공**
-  - `not-found.tsx`: 토큰 없음/형식 불량 문구, 견적서 존재 여부 비노출
-  - `error.tsx`: 일시 오류 문구와 "다시 시도" 버튼(`reset()` + `router.refresh()`로 서버 재조회), 내부 오류 메시지·digest 비노출
-  - 오류 화면 공통 레이아웃 컴포넌트로 중복 제거
-  - `/quote`(토큰 없음) 경로의 404 처리 확인
+- **Task 007: 오류 안내 화면을 완성해 원인별 안내와 다시 시도 동선 제공** ✅ - 완료
+  - ✅ 완료(2026-11-01): 오류 화면 DOM, "다시 시도"(재조회 `_rsc` 요청, 화면 유지), 404 문구 동일, 375px 표시 통과. **이월했던 production 콘솔 노출 확인은 Task 012에서 해소**: production 오류 화면 콘솔에는 `The specific message is omitted in production builds…` 한 줄뿐이고 ZodError·속성명이 없음. 개발 모드에서도 `QuoteUnavailableError`로 일반화되어 ZodError 덤프가 사라졌고, 서버 로그 한 줄(`quoteNumber: too_small`)만 개발 모드 콘솔에 전달됨(production은 전달 안 됨)
+  - ✅ `not-found.tsx`: 토큰 없음/형식 불량 문구, 견적서 존재 여부 비노출
+  - ✅ `error.tsx`: 일시 오류 문구와 "다시 시도" 버튼(`reset()` + `router.refresh()`로 서버 재조회), 내부 오류 메시지·digest 비노출(화면 기준)
+  - ✅ 오류 화면 공통 레이아웃 컴포넌트로 중복 제거
+  - ✅ `/quote`(토큰 없음) 경로의 404 처리 확인(루트 `not-found.tsx` 추가로 같은 한국어 문구)
   - 테스트 (Playwright MCP, 구현 후 필수):
     - 정상: 해당 없음(오류 화면 전용). 대신 회귀: `/quote/dummy-valid`가 오류 화면 변경 후에도 정상 표시
     - 경계: `/quote`(토큰 없음) → 404 / `/quote/` 뒤 매우 긴 문자열(500자) → 404, 서버 오류 없음
@@ -165,10 +169,11 @@ PRD의 "가정 / 결정 필요" 항목입니다. 노션 템플릿이 확정되�
     - 정적 검사: `npm run check-all` 통과
   - 관련 기능: F004, F010
 
-- **Task 008: 반응형·접근성을 점검하고 Playwright MCP로 화면 상태별 시각 검증**
-  - 모바일(375px)/태블릿(768px)/데스크톱(1280px)에서 품목 표 가로 넘침 없음 확인(필요 시 가로 스크롤 컨테이너)
-  - 시맨틱 마크업(`main`, `h1`~, `table` 헤더 `scope`), 버튼 포커스 링, 색 대비 확인
-  - 라이트/다크 테마 양쪽 확인
+- **Task 008: 반응형·접근성을 점검하고 Playwright MCP로 화면 상태별 시각 검증** ✅ - 완료
+  - ✅ 완료(2026-11-01): 375/768/1280px × 라이트/다크 6개 조합 가로 넘침 없음, `/quote/nonexistent` 모바일(라이트/다크) 정상, 키보드 포커스·Enter 동작, heading 순서·표 `scope`, print·다크, `npm run check-all`·`npm run build` 통과. Task 007 회귀 항목(production 콘솔 확인)은 Task 012에서 해소됨
+  - ✅ 모바일(375px)/태블릿(768px)/데스크톱(1280px)에서 품목 표 가로 넘침 없음 확인(필요 시 가로 스크롤 컨테이너)
+  - ✅ 시맨틱 마크업(`main`, `h1`~, `table` 헤더 `scope`), 버튼 포커스 링, 색 대비 확인
+  - ✅ 라이트/다크 테마 양쪽 확인
   - 테스트 (Playwright MCP, 구현 후 필수):
     - 정상: 3개 뷰포트(`browser_resize`)에서 `dummy-valid` 스크린샷(`browser_take_screenshot`) 확인, 라이트/다크(`browser_emulate_media`) 각각
     - 경계: `dummy-many-items`·`dummy-long-text`에서 375px 가로 스크롤이 문서 전체가 아닌 표 컨테이너에만 발생(`browser_evaluate`), print 미리보기 스크린샷
@@ -179,10 +184,11 @@ PRD의 "가정 / 결정 필요" 항목입니다. 노션 템플릿이 확정되�
     - Phase 완료: `npm run check-all`, `npm run build` 통과
   - 관련 기능: F002, F003, F004
 
-### Phase 3: 핵심 기능 구현
+### Phase 3: 핵심 기능 구현 ✅
 
-- **Task 009: 노션 클라이언트와 속성 매핑 계층을 구성하고 테스트 데이터 세트 준비**
-  - ⚠️ 결정 필요: 속성명/타입, 품목 모델링 방식(실제 노션 템플릿 확인 후 확정)
+- **Task 009: 노션 클라이언트와 속성 매핑 계층을 구성하고 테스트 데이터 세트 준비** ✅ - 완료
+  - ✅ 결정 완료(2026-11-01): 속성명/타입과 품목 모델링(별도 Items DB + Relation)은 실제 노션 스키마로 확정(위 "결정 필요 / 가정" 표 참고). 외부 작업: `.env.local`의 Notion 3종 값, Integration 공유, 테스트 데이터 T-01~T-09
+  - ✅ 테스트 통과(2026-11-01): `server-only`·`env.ts` 필수화·`notion.ts`·`notion-mappers.ts` 구현, `.env.local` 3종·Integration 공유·실제 노션 스키마 일치, 잘못된 API 키(401)·잘못된 data source ID의 production 일반 오류 화면, 클라이언트 번들·응답·콘솔·서버 로그 비노출(Task 010~014에서 재확인). **사용자 결정(2026-11-01)으로 두 항목을 대체해 닫음**: ① 토큰 속성이 select일 때의 화면 확인 → 매퍼(`NotionMappingError`)와 오류 변환의 단위 검증으로 대체(노션 스키마 변경은 토큰 값에 영향을 줄 수 있어 시도하지 않음), ② 노션 테스트 데이터 T-01~T-09 → 상시 보관 대신 검증 때마다 `TEMP-` 견적서·품목을 추가했다가 삭제하는 방식으로 대체
   - `npm i server-only` 후 `src/lib/notion.ts`에 `import 'server-only'`, `Client`(`timeoutMs`, `retry`, `notionVersion` 명시) 구성
   - `src/lib/notion-mappers.ts`: 속성 타입별 헬퍼(title/rich_text/number/date/formula)와 속성명 상수 한 곳에 집중
   - `env.ts`에서 Notion 3종을 서버 런타임 필수값으로 전환(누락 시 명확한 설정 오류), `NEXT_PUBLIC_` 접두사 사용 금지
@@ -195,7 +201,8 @@ PRD의 "가정 / 결정 필요" 항목입니다. 노션 템플릿이 확정되�
     - 정적 검사: `npm run check-all` 통과
   - 관련 기능: F001, F010
 
-- **Task 010: 토큰으로 견적서 1건을 조회하는 `getQuoteByToken`을 구현**
+- **Task 010: 토큰으로 견적서 1건을 조회하는 `getQuoteByToken`을 구현** ✅ - 완료
+  - ✅ 테스트 통과(2026-11-01, 데이터: `INV-2026-001`): 정상(노션 원본 일치), 길이 경계 15/16/128/129자, 대소문자 변형 404(노션 `equals`가 대소문자를 무시해 정확 일치 비교 추가), 특수문자 7종 노션 호출 0회, 데이터 소스 ID·API 키 오류 일반 오류, production 응답·오류 화면 비노출, **T-08 중복 토큰**(노션에 임시 행 추가 후 삭제: 500·일반 오류 화면·마스킹 로그). `Quote`에서 `token` 필드 제거
   - 토큰 형식 사전 검증(길이·허용 문자) 실패 시 노션 호출 없이 `null` 반환
   - `dataSources.query`에 토큰 속성 `equals` 필터, `page_size: 2`로 조회해 0건 → `null`, 2건 이상(중복 토큰) → 서버 로그 후 오류 처리
   - `isFullPage`로 응답 좁히기, 견적서 속성을 `Quote` 원본 객체로 매핑
@@ -208,8 +215,9 @@ PRD의 "가정 / 결정 필요" 항목입니다. 노션 템플릿이 확정되�
     - 정적 검사: `npm run check-all` 통과
   - 관련 기능: F001
 
-- **Task 011: 견적 품목 조회와 합계 계산을 구현해 품목 표 데이터 완성**
-  - ⚠️ 결정 필요: 합계 원본(노션 Formula/Rollup vs 앱 계산)
+- **Task 011: 견적 품목 조회와 합계 계산을 구현해 품목 표 데이터 완성** ✅ - 완료
+  - ✅ 결정 완료: 합계 원본은 노션 `총 금액`(`quote.total`). 품목 `amount` 합산(`sumItemAmounts`)은 불일치 감지용 교차 검증만(불일치 시 서버 로그만, 화면은 `total` 표시)
+  - ✅ 테스트 통과(2026-11-01, 노션 임시 데이터 추가 후 삭제): 노션 원본 일치·합계 일치, T-05(0건)·품목 1건·T-06(30건)·소수 수량·10자리 금액, T-09(품목 섞임 없음), 합계 불일치 로그(화면은 총 금액), 필수값 누락 행·품목 DB ID 오설정은 전체 일반 오류, production 비노출. **정렬 기준을 `created_time`에서 견적서 `항목` relation의 연결 순서로 변경**(노션 `created_time`이 분 단위라 같은 분에 입력한 품목 순서가 뒤섞임). 호출 수: 품목 25개 이하 2회, 초과 3회
   - 품목 DB를 `relation contains page_id` 필터로 `dataSources.query`, `has_more`/`next_cursor` 페이지네이션 처리
   - 수량·단가·금액 매핑(금액이 Formula면 `formula.number` 추출), 정렬 기준 명시
   - 합계는 결정된 방식으로 계산하고, 노션 값과 일치함을 샘플 견적서로 대조
@@ -222,7 +230,8 @@ PRD의 "가정 / 결정 필요" 항목입니다. 노션 템플릿이 확정되�
     - 정적 검사: `npm run check-all` 통과
   - 관련 기능: F001, F002
 
-- **Task 012: Zod 검증·변환과 오류 매핑을 구현해 노션 응답을 안전한 화면 모델로 변환**
+- **Task 012: Zod 검증·변환과 오류 매핑을 구현해 노션 응답을 안전한 화면 모델로 변환** ✅ - 완료
+  - ✅ 테스트 통과(2026-11-01, 노션 임시 데이터 추가 후 삭제): T-01 정상, T-04(빈 필드 오류 없이 `-`, 비고 섹션 숨김), T-07(견적서 번호 빈 값 → 일반 오류 + 서버 로그 `too_small`), 429·5xx·타임아웃·401·403·404를 실제 SDK 오류로 분류(로컬 목 서버), "다시 시도" 후 복구, **production 오류 화면 콘솔·응답에 ZodError·속성명 없음**(Task 007 이월 항목 해소), 서버 로그 토큰 마스킹. `src/lib/notion-errors.ts`의 `QuoteUnavailableError`로 화면에는 항상 일반 오류만 전달
   - 매핑 결과를 `quoteSchema.parse`로 검증, 실패 시 서버에만 상세 로그(토큰·원본 body 마스킹) 후 일반 오류로 전환
   - 오류 매핑을 별도 함수로 분리: 결과 없음/형식 불량 → `notFound()`, 429/5xx/타임아웃 → `error.tsx`, 401/403/object_not_found → 서버 로그 + 일반 오류, ZodError → 일반 오류
   - 필수값 누락(견적번호 빈 값 등)·타입 불일치 케이스 처리, null 허용 필드(비고·담당자명·발행일)는 빈 값 허용
@@ -235,9 +244,10 @@ PRD의 "가정 / 결정 필요" 항목입니다. 노션 템플릿이 확정되�
     - 정적 검사: `npm run check-all` 통과
   - 관련 기능: F010, F004
 
-- **Task 013: 견적서 페이지에 실제 데이터를 연결하고 더미 경로를 제거**
+- **Task 013: 견적서 페이지에 실제 데이터를 연결하고 더미 경로를 제거** ✅ - 완료
+  - ✅ 테스트 통과(2026-11-01, 노션 임시 데이터 추가 후 삭제): T-01 실데이터·PDF 버튼(`window.print` 스텁), T-03(당일) 배너 없음·T-02(어제) 배너, 노션 수정 즉시 반영(dev·production), `dummy-*` 404, `noindex` 메타·`Cache-Control: no-store`, Task 004~008 실데이터 회귀(375px·print·키보드). 더미 픽스처(`src/lib/mocks`)는 삭제
   - `page.tsx`에서 `getQuoteByToken` → `notFound()` / `QuoteView` 렌더, 만료 시 배너 표시
-  - Task 003의 더미 토큰 진입과 `src/lib/mocks` 사용처 제거(픽스처는 테스트 참고용으로만 유지 여부 결정)
+  - Task 003의 더미 토큰 진입과 `src/lib/mocks` 사용처 제거(결정: 픽스처 파일은 삭제. 이력은 git에 남김)
   - `export const dynamic = 'force-dynamic'`로 매 요청 조회(PRD 결정과 일치), 응답이 검색 노출·캐시되지 않도록 확인
   - 테스트 (Playwright MCP, 구현 후 필수 / 데이터: T-01, T-02, T-03):
     - 정상: T-01 접속 → 실제 데이터 표시, "PDF 다운로드" 동작(`window.print` 스텁)
@@ -248,7 +258,8 @@ PRD의 "가정 / 결정 필요" 항목입니다. 노션 템플릿이 확정되�
     - 정적 검사: `npm run check-all`, `npm run build` 통과
   - 관련 기능: F001, F002, F004, F010
 
-- **Task 014: Playwright MCP로 전체 사용자 여정과 엣지 케이스를 프로덕션 모드에서 통합 검증**
+- **Task 014: Playwright MCP로 전체 사용자 여정과 엣지 케이스를 프로덕션 모드에서 통합 검증** ✅ - 완료
+  - ✅ 테스트 통과(2026-11-01, production, 노션 임시 데이터 8건·품목 34건 추가 후 삭제, `tasks/014-integration.md`): 정상(T-01 원본 대조·PDF 스텁·print UI 숨김), 경계(T-02~T-06, T-09, 30건 PDF 2페이지), 오류(404 10종, 잘못된 API 키·ID 3종, T-07·T-08), 보안·노출(응답·콘솔·네트워크·서버 로그 모두 비노출, `quote.token` 필드 없음), 반응형(375px T-01·T-06). 한계: 다중 페이지 PDF의 시각 확인 못함(Task 018 실기기에서 확인)
   - `npm run build` + `npm start`(프로덕션 모드)에서 아래 시나리오를 모두 수행하고 결과를 `/tasks/014-*.md`에 기록
   - 테스트 (Playwright MCP, 필수):
     - 정상: T-01 링크 접속 → 내용 표시 → "PDF 다운로드" 클릭(`window.print` 스텁 호출 확인) → print 미리보기에서 UI 숨김 / 노션 원본과 화면 값 대조(견적번호·품목·합계)로 "원본과 100% 일치" 확인
@@ -261,7 +272,8 @@ PRD의 "가정 / 결정 필요" 항목입니다. 노션 템플릿이 확정되�
 
 ### Phase 4: 마무리 및 배포
 
-- **Task 015: 보안 점검으로 토큰·키 노출 경로 차단**
+- **Task 015: 보안 점검으로 토큰·키 노출 경로 차단** ✅ - 완료
+  - ✅ 테스트 통과(2026-11-01, `tasks/015-security.md`): `Referrer-Policy: no-referrer`·`X-Robots-Tag: noindex, nofollow` 추가, 구식 `X-XSS-Protection` 제거(200·404·500·홈 모두 적용 확인), `no-referrer`에서도 "다시 시도"·PDF 버튼 정상, 번들(36개)·정적 HTML·응답·서버 로그에 키·ID·토큰 원문 없음. 토큰 열거 평가: 형식이 맞는 토큰은 요청당 노션 1회 호출, 순차 20회·동시 20회 버스트에서 429 없음, 위험은 정보 유출이 아니라 가용성 저하(MVP 이후 후보로 기록)
   - `NOTION_API_KEY`가 클라이언트 번들·HTML·오류 응답·로그에 노출되지 않는지 `next build` 산출물과 네트워크 응답으로 확인
   - 링크 토큰이 서버 로그·오류 메시지에 평문으로 남지 않는지 확인
   - `robots`/`noindex`, 응답 헤더(캐시, `Referrer-Policy`) 점검
@@ -274,7 +286,8 @@ PRD의 "가정 / 결정 필요" 항목입니다. 노션 템플릿이 확정되�
     - 정적 검사: `npm run check-all`, `npm run build` 통과
   - 관련 기능: F001, F004
 
-- **Task 016: 성능·호출 비용을 점검해 응답 지연과 레이트 리밋 위험 완화**
+- **Task 016: 성능·호출 비용을 점검해 응답 지연과 레이트 리밋 위험 완화** ✅ - 완료
+  - ✅ 테스트 통과(2026-11-01, `tasks/016-performance.md`): production 정상 견적서 5회 평균 0.64초·최대 0.80초(호출 2회, 25개 초과 3회), 목 서버 실측으로 SDK `maxRetryDelayMs` 기본 60초가 `Retry-After: 20`에서 정상 사용자를 60초 기다리게 함을 확인 → `timeoutMs` 8초, `maxRetries` 2, 대기 상한 2초로 변경(같은 상황 4초). `force-dynamic` 유지, **`loading.tsx`는 도입 안 함**(도입 시 404·500이 모두 HTTP 200이 됨을 실험으로 확인), `unstable_cache` 도입 기준 문서화. Vercel 지역(`iad1` 기본, `icn1` 가능)은 노션 서버 위치 미확인이라 Task 018에서 측정 후 결정
   - 견적서 1건당 노션 호출 수(견적 1 + 품목 N 페이지) 측정, 타임아웃·재시도 값 검토
   - `force-dynamic` 유지 여부 판단, 트래픽 증가 시 `unstable_cache`(revalidate 60초 미만, 파일 URL 만료 고려) 도입 기준 문서화
   - 대기 상태 UI(`loading.tsx`) 필요 여부 검토
@@ -286,7 +299,8 @@ PRD의 "가정 / 결정 필요" 항목입니다. 노션 템플릿이 확정되�
     - 정적 검사: `npm run check-all`, `npm run build` 통과
   - 관련 기능: F001
 
-- **Task 017: 운영 문서를 정리해 노션 템플릿과 링크 발급 절차 고정**
+- **Task 017: 운영 문서를 정리해 노션 템플릿과 링크 발급 절차 고정** ✅ - 완료
+  - ✅ 테스트 통과(2026-11-01, `tasks/017-ops-docs.md`): 가이드·README·PRD 갱신, README 한 줄 명령으로 만든 토큰으로 `TEMP-` 견적서 접속 200, 토큰 교체 후 이전 링크 404·새 링크 200, 문서에 실제 키·값 없음, `npm run check-all` 통과. 임시 데이터는 삭제함
   - 노션 설정 체크리스트 최신화(Integration 생성, DB 공유, 속성명·타입, 품목 DB 연결)
   - 토큰 생성·교체(유출 시 폐기) 규칙 문서화, 인쇄 시 브라우저 머리글/바닥글에 URL이 포함될 수 있다는 안내
   - `docs/guides/notion-api-database.md`의 환경변수명(`NOTION_DATA_SOURCE_ID`)을 실제 코드(`NOTION_QUOTES_DATA_SOURCE_ID`, `NOTION_ITEMS_DATA_SOURCE_ID`)와 일치시킴
@@ -298,7 +312,7 @@ PRD의 "가정 / 결정 필요" 항목입니다. 노션 템플릿이 확정되�
     - 정적 검사: `npm run check-all`(문서 포맷 포함) 통과
   - 관련 기능: F001, F010
 
-- **Task 018: Vercel에 배포하고 실제 링크로 운영 점검**
+- **Task 018: Vercel에 배포하고 실제 링크로 운영 점검** - 우선순위
   - Vercel 환경변수(Notion 3종) 등록, `npm run check-all` 및 `npm run build` 통과 확인
   - 프로덕션 URL에서 테스트 견적서 링크 접속·PDF 저장(Chrome/Safari/모바일) 확인
   - 오류 화면(잘못된 토큰, 일시 오류) 프로덕션 동작 확인

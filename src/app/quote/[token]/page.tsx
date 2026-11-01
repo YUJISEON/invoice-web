@@ -1,18 +1,23 @@
 import { notFound } from 'next/navigation'
 
 import { Container } from '@/components/layout/container'
+import { QuoteView } from '@/components/quote/quote-view'
 import { ThemeToggle } from '@/components/theme-toggle'
-import { getMockQuote } from '@/lib/mocks/quote'
+import { getQuoteByToken } from '@/lib/notion'
+
+// 노션 수정이 매 요청에 즉시 반영되도록 캐시하지 않는다 (F001)
+export const dynamic = 'force-dynamic'
 
 interface QuotePageProps {
   params: Promise<{ token: string }>
 }
 
-// TODO(Task 004): QuoteView로 교체. Task 010: getQuoteByToken으로 교체 (F001, F002, F010)
+// 토큰으로 노션 견적서를 조회해 표시한다 (F001, F002, F010).
+// 토큰 형식 불량·결과 없음은 notFound(), 조회·검증 실패는 error.tsx의 일반 오류 화면
 export default async function QuotePage({ params }: QuotePageProps) {
   const { token } = await params
 
-  const quote = getMockQuote(token)
+  const quote = await getQuoteByToken(token)
   if (!quote) notFound()
 
   return (
@@ -21,10 +26,9 @@ export default async function QuotePage({ params }: QuotePageProps) {
         <div className="flex justify-end print:hidden">
           <ThemeToggle />
         </div>
-        <h1 className="mt-6 text-2xl font-semibold">견적서</h1>
-        <p className="text-muted-foreground mt-2 text-sm">
-          {quote.quoteNumber}
-        </p>
+        <div className="mt-6">
+          <QuoteView quote={quote} />
+        </div>
       </Container>
     </main>
   )

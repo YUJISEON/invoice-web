@@ -39,3 +39,5 @@ Thumbs.db
 
 # Generated files
 next-env.d.ts
+# Playwright MCP artifacts
+.playwright-mcp/

@@ -120,3 +120,32 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* 인쇄 전용 스타일 (F003). 브라우저 인쇄로 PDF를 저장한다 */
+@page {
+  size: A4;
+  margin: 16mm;
+}
+
+@media print {
+  /* 다크 테마여도 라이트 토큰으로 되돌려 흰 배경·어두운 글자로 출력 */
+  :root,
+  .dark {
+    --background: oklch(1 0 0);
+    --foreground: oklch(0.145 0 0);
+    --card: oklch(1 0 0);
+    --card-foreground: oklch(0.145 0 0);
+    --muted: oklch(0.97 0 0);
+    --muted-foreground: oklch(0.45 0 0);
+    --border: oklch(0.85 0 0);
+    --destructive: oklch(0.577 0.245 27.325);
+  }
+
+  /* 긴 표는 페이지마다 헤더를 반복하고 행은 페이지 중간에서 끊지 않는다 */
+  thead {
+    display: table-header-group;
+  }
+  tr {
+    break-inside: avoid;
+  }
+}

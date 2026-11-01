@@ -1,342 +1,125 @@
-# Notion API 데이터베이스 연동 분석 (invoice-web)
+# 노션 연동 가이드 (invoice-web)
 
-> `notion-db-expert` 에이전트 분석 결과 정리. 코드 수정 및 실제 Notion 호출은 수행하지 않았습니다(토큰 없음).
-> 속성명/타입은 `docs/PRD@old.md`의 가정값이며 실제 노션 템플릿으로 검증되지 않았습니다.
+현재 구현(`src/lib/notion.ts`, `notion-mappers.ts`, `notion-errors.ts`)과 실제 노션 스키마를 기준으로 정리한 문서입니다. 값이 바뀌면 코드와 이 문서를 함께 고칩니다.
 
 ## 0. 요약
 
-- 현재 Notion 연동 코드가 없습니다. `src/lib/`에는 `env.ts`, `utils.ts`만 있고 `src/lib/notion.ts`, `src/lib/schemas/`, `src/app/quote/`는 없습니다. `@notionhq/client`도 `package.json`에 없습니다.
-- `docs/PRD.md`는 없고 `docs/PRD@old.md`만 있습니다. CLAUDE.md는 `@/docs/PRD.md`를 가리키므로 경로가 어긋나 있습니다.
-- `@notionhq/client` 최신은 v5.27.0 (Node >= 18)입니다. 기본 `Notion-Version`은 `2025-09-03`이며, DB 조회는 `databases.query`가 아니라 **`dataSources.query`** 를 사용합니다.
-- 가장 큰 설계 쟁점은 품목(items)을 노션에서 어떻게 모델링할지입니다(PRD 미결 이슈).
+- 노션 DB 2개를 읽기 전용으로 조회합니다: **견적서 DB(Invoices)** 와 **견적 품목 DB(Items)**. 앱은 노션에 쓰지 않습니다
+- 라이브러리는 `@notionhq/client` v5.27, 노션 API 버전 `2025-09-03`(코드에 명시)입니다. 조회는 `databases.query`가 아니라 **`dataSources.query`** 입니다
+- 노션 호출은 `src/lib/notion.ts`에서만 하고 서버 전용(`import 'server-only'`)입니다. 속성명은 `src/lib/notion-mappers.ts`의 `QUOTE_PROPS`, `ITEM_PROPS` 두 상수에만 있습니다
+- 합계(`총 금액`)는 노션에 직접 입력한 값을 그대로 표시합니다. 품목 금액의 합은 일치 여부를 서버 로그로 확인하는 데만 씁니다
 
-## 1. 현재 문서/코드의 노션 연동 요구사항
+## 1. 환경변수
 
-### 1.1 결정 사항 (docs/PRD@old.md)
+`src/lib/env.ts`가 Zod로 검증합니다. 3개 모두 필수이며 하나라도 없거나 비어 있으면 변수 이름만 알리는 설정 오류가 납니다(값은 출력하지 않음). `NEXT_PUBLIC_` 접두사를 붙이지 않습니다.
 
-| 항목      | 결정                                                     |
-| --------- | -------------------------------------------------------- |
-| 연동 방식 | Notion API 공식 연동 (Integration Token)                 |
-| 접근 방식 | 고유 토큰 링크, 비로그인 (`/quote/[token]`)              |
-| PDF       | 브라우저 인쇄 (`@media print`, `print:hidden`)           |
-| 범위      | 견적서 1건 = 링크 1개, 읽기 전용, 목록/대시보드 없음     |
-| 캐싱      | MVP는 캐시 없이 매 요청 조회 (필요 시 `revalidate` 검토) |
-| 동기화    | 웹훅 없음, fetch-on-view                                 |
+| 변수                           | 설명                                                              |
+| ------------------------------ | ----------------------------------------------------------------- |
+| `NOTION_API_KEY`               | 노션 Integration Token (읽기 권한)                                |
+| `NOTION_QUOTES_DATA_SOURCE_ID` | 견적서 DB(Invoices)의 **data source ID** (Database ID와 다릅니다) |
+| `NOTION_ITEMS_DATA_SOURCE_ID`  | 견적 품목 DB(Items)의 **data source ID**                          |
 
-### 1.2 속성 매핑 (PRD 7.3, 모두 가정)
+변수를 추가·변경하면 `src/lib/env.ts`, `.env.example`, 이 문서, `README.md`를 함께 고칩니다.
 
-| Notion 속성 | 타입                           | 앱 필드                           |
-| ----------- | ------------------------------ | --------------------------------- |
-| 토큰        | Text (고유값)                  | `token` (URL 매칭 키)             |
-| 견적번호    | Text                           | `quoteNumber`                     |
-| 고객사명    | Text                           | `clientName`                      |
-| 담당자명    | Text                           | `contactName`                     |
-| 발행일      | Date                           | `issuedAt`                        |
-| 유효기간    | Date                           | `expiresAt`                       |
-| 품목        | Relation 또는 하위 테이블 블록 | `items[]` (품목명/수량/단가/금액) |
-| 비고        | Text                           | `memo`                            |
+## 2. 노션 DB 스키마 (실제 구조)
 
-합계(소계/부가세/총액)는 화면 요구사항에는 있으나 속성표에는 없습니다. 노션 Formula/Rollup으로 계산할지, 앱에서 계산할지 미정입니다.
+속성 이름과 타입이 코드와 정확히 같아야 합니다. 이름을 바꾸면 조회가 실패합니다.
 
-### 1.3 계획된 코드 위치 (PRD 8절)
+### 견적서 DB (Invoices)
 
-- `src/lib/notion.ts`: 클라이언트 초기화, `getQuoteByToken(token)`
-- `src/lib/schemas/quote.ts`: `quoteSchema` (Zod)
-- `src/app/quote/[token]/page.tsx`: Server Component
-- `src/components/quote/`: 화면 컴포넌트
-- 상태별 처리: 정상 / 토큰 없음(404) / 만료(안내 배너) / API 실패(재시도) / Zod 실패(일반 에러, 내부 구조 비노출)
+| 속성 이름      | 노션 타입              | 앱 필드       | 비고                                                                                  |
+| -------------- | ---------------------- | ------------- | ------------------------------------------------------------------------------------- |
+| `견적서 번호`  | title                  | `quoteNumber` | 필수(비어 있으면 일반 오류 화면)                                                      |
+| `클라이언트명` | text(rich_text)        | `clientName`  | 필수                                                                                  |
+| `담당자명`     | text(rich_text)        | `contactName` | 선택(비면 화면에 `-`)                                                                 |
+| `토큰`         | **text(rich_text)**    | (조회 키)     | 링크의 `/quote/<토큰>`. **반드시 text 타입 유지**(select, formula 등으로 바꾸면 오류) |
+| `비고`         | text(rich_text)        | `memo`        | 선택(비면 비고 섹션 숨김)                                                             |
+| `발행일`       | date                   | `issuedAt`    | 선택(비면 `-`). `YYYY-MM-DD`로 정규화                                                 |
+| `유효기간`     | date                   | `expiresAt`   | 선택. 지나면 만료 배너(한국 시간 기준, 당일은 유효)                                   |
+| `총 금액`      | number                 | `total`       | 필수. 화면의 합계로 그대로 표시                                                       |
+| `상태`         | status(대기/승인/거절) | `status`      | 읽지만 화면에 표시하지 않음                                                           |
+| `항목`         | relation → Items       | (품목 순서)   | Items의 `Invoices`와 연결된 양방향 relation                                           |
 
-### 1.4 기존 코드 컨벤션
+### 견적 품목 DB (Items)
 
-- `src/lib/env.ts`는 Zod로 환경변수를 검증하고 `export const env`로 내보냅니다. `NOTION_API_KEY`, `NOTION_DATA_SOURCE_ID`는 여기에 서버 전용으로 추가하는 것이 일관적입니다.
-- 현재 `env.ts`는 모듈 로드 시 `parse`하므로 클라이언트 번들에서 import하면 서버 변수가 노출될 수 있습니다. 서버 전용 파일로 분리하거나 `import 'server-only'`를 사용합니다(`server-only` 패키지는 미설치).
-- 구조 규칙: kebab-case 파일명, named export, `@/` 별칭, 파일 300줄 이하.
-- 스택: zod ^4.1.11 (v4 문법), Next 15.5.3, React 19.1.0.
+| 속성 이름  | 노션 타입           | 앱 필드       | 비고                           |
+| ---------- | ------------------- | ------------- | ------------------------------ |
+| `항목명`   | title               | `name`        | 필수                           |
+| `수량`     | number              | `quantity`    | 필수, 소수 가능                |
+| `단가`     | number              | `unitPrice`   | 필수                           |
+| `금액`     | formula(number)     | `amount`      | 수량 × 단가를 계산하는 formula |
+| `Invoices` | relation → Invoices | (소속 견적서) | 이 값으로 견적서의 품목을 찾음 |
 
-## 2. @notionhq/client v5 기준 DB 사용법
+## 3. 조회 흐름 (`getQuoteByToken`)
 
-### 2.1 설치/초기화
+1. 토큰 형식 검사: `[A-Za-z0-9_-]{16,128}`(`tokenSchema`). 맞지 않으면 **노션을 호출하지 않고** 404
+2. 견적서 조회(호출 1): `토큰` 속성이 같은 행을 `dataSources.query`(`rich_text equals`, `page_size: 2`)
+   - 노션의 `equals`는 **대소문자를 구분하지 않으므로** 조회 후 코드에서 토큰이 정확히 같은 행만 남깁니다(대소문자만 다른 토큰은 404)
+   - 0건이면 404, **2건 이상(중복 토큰)이면 오류**(서버 로그에 앞 4자만 기록)
+3. 품목 조회(호출 1): Items에서 `Invoices` relation이 그 견적서인 행을 조회(한 번에 100건, `has_more`면 이어서)
+4. 품목 순서: 견적서 쪽 `항목` relation의 **연결 순서**를 따릅니다(아래 5절). 품목이 25개를 넘으면 `pages.properties.retrieve`로 relation 목록을 이어서 읽습니다(호출 +1)
+5. 모든 값을 Zod(`quoteSchema`)로 검증한 뒤 화면에 전달. `Quote`에는 토큰이 없습니다
+6. `품목 금액의 합`이 `총 금액`과 다르면 서버 로그에만 경고를 남기고 화면은 `총 금액`을 표시
 
-```bash
-npm i @notionhq/client
-```
+| 견적서               | 노션 호출 |
+| -------------------- | --------- |
+| 품목 25개 이하       | 2회       |
+| 품목 25개 초과       | 3회       |
+| 없는 토큰(형식 정상) | 1회       |
+| 형식 불량 토큰       | 0회       |
 
-```ts
-import { Client } from '@notionhq/client'
+## 4. 오류 처리
 
-const notion = new Client({
-  auth: process.env.NOTION_API_KEY,
-  timeoutMs: 10_000, // 기본 60000, 고객 화면이라 짧게
-  retry: { maxRetries: 3 }, // 429/5xx 자동 재시도 (기본 maxRetries 2)
-})
-```
+| 상황                                                   | 화면                                                             | 코드                                      |
+| ------------------------------------------------------ | ---------------------------------------------------------------- | ----------------------------------------- |
+| 토큰 형식 불량, 결과 없음, 존재하지 않는 경로          | 404 "유효하지 않은 링크입니다"(존재 여부 비노출, 모두 같은 문구) | `getQuoteByToken`이 `null` → `notFound()` |
+| 429, 타임아웃, 5xx 등 노션 일시 오류                   | 500 "견적서를 불러오지 못했습니다" + **다시 시도**               | `QuoteUnavailableError`                   |
+| 401·403·404(`object_not_found`)·400 (설정·권한)        | 같은 500 화면                                                    | `QuoteUnavailableError`                   |
+| 데이터 검증 실패(견적서 번호 빈 값, 수량 비어 있음 등) | 같은 500 화면                                                    | `QuoteUnavailableError`                   |
+| 중복 토큰                                              | 같은 500 화면                                                    | `QuoteUnavailableError`                   |
 
-- SDK가 429(`Retry-After`)와 서버 오류를 자동 재시도하므로 직접 백오프 루프를 만들 필요가 적습니다. `retry: false`로 끌 수 있습니다.
-- 기본 `notionVersion`은 `2025-09-03`입니다. 명시적으로 고정하는 편이 안전합니다.
-- SDK는 환경변수를 읽지 않으므로 `process.env`를 직접 넘깁니다.
-- 브라우저에서 토큰을 쓰면 `BrowserTokenNotAllowedError`가 발생합니다. `dangerouslyAllowBrowser`는 켜지 않습니다.
+- 화면으로 전달되는 오류는 항상 `QuoteUnavailableError`(메시지 `QUOTE_UNAVAILABLE`) 하나뿐입니다. 상세 원인은 **서버 로그에만** 한 줄로 남습니다(분류, 코드, 문제된 필드 경로). 토큰은 앞 4자만 기록하고 노션 오류 메시지는 ID가 섞일 수 있어 기록하지 않습니다
+- 화면·콘솔·응답에는 토큰 원문(URL 제외), API 키, data source ID, 속성명, ZodError, 스택이 나오지 않습니다(production에서 확인)
+- 견적서의 **일부만** 표시하는 경우는 없습니다(품목 조회 실패, 검증 실패 모두 전체 오류)
 
-### 2.2 인증과 공유 설정
+## 5. 운영상 알아야 할 동작과 한계
 
-- notion.so/profile/integrations에서 Internal Integration을 만들고 token(`ntn_...` 또는 `secret_...`)을 발급합니다. 권한은 "Read content"만 부여합니다(읽기 전용 요구사항).
-- 대상 DB 페이지의 "..." → Connections → 해당 Integration을 추가해야 합니다. 누락하면 `object_not_found`(404)가 발생합니다.
-- 품목을 하위 DB(Relation)로 둔다면 그 DB도 별도로 Connection을 추가합니다.
+- **품목 순서는 "견적서에 품목을 연결한 순서"입니다.** 노션의 `created_time`은 분 단위로 잘려 같은 분에 입력한 품목의 순서를 보장하지 못해서 relation 연결 순서를 씁니다. 중간에 끼워 넣으려면 relation을 해제한 뒤 다시 연결합니다. 명시적 순번이 필요해지면 Items DB에 `순번` 숫자 속성을 추가하는 방식을 검토합니다(MVP 이후)
+- **토큰은 대소문자를 구분합니다.** 노션 쪽 필터는 구분하지 않지만 앱이 정확히 일치하는 행만 인정합니다
+- **토큰은 견적서마다 서로 달라야 합니다.** 같은 토큰이 2건 이상이면 오류 화면이 나옵니다
+- **`총 금액`은 직접 입력하는 숫자입니다.** 품목을 수정하고 `총 금액`을 갱신하지 않으면 두 값이 달라지고, 화면은 `총 금액`을 표시합니다(서버 로그에 불일치 경고). `총 금액`을 Items의 합계 rollup으로 바꾸면 이 문제가 사라집니다(타입이 number가 아닌 rollup이 되면 코드 수정이 필요합니다)
+- **응답 시간**: 정상 견적서 평균 약 0.6초(노션 호출 2회). 노션이 느리면 SDK 타임아웃 8초, 429는 최대 2번 재시도(대기 상한 2초)한 뒤 오류 화면으로 넘어갑니다
+- **레이트 리밋**: 노션은 평균 3 req/s입니다. 형식이 맞는 토큰은 요청마다 노션을 1회 호출하므로 지속적인 고속 요청은 가용성에 영향을 줄 수 있습니다(MVP 이후 요청 제한 후보). 토큰 공간이 192비트라 열거로 유효한 토큰을 맞힐 가능성은 사실상 없습니다
+- **캐시 없음**: 매 요청 노션을 조회합니다(`force-dynamic`, `Cache-Control: no-store`). 트래픽이 늘어 `rate_limited`가 반복되거나 평균 응답이 2초 이상이 되면 `unstable_cache`(`revalidate` 60초 미만, 캐시 키에 토큰 포함, 오류 응답은 캐시하지 않음)를 검토합니다. 운영자가 노션 수정을 즉시 반영하길 기대하므로 도입 전에 합의합니다
+- **노션 파일 URL(약 1시간 만료)** 은 읽지 않습니다. 로고는 `public/` 정적 자산으로 둡니다
 
-### 2.3 Data Source 모델 (2025-09-03 이후)
+## 6. SDK 설정 (`src/lib/notion.ts`)
 
-- 하나의 database가 여러 data source를 담는 컨테이너입니다. Database ID와 data source ID는 서로 다르며 호환되지 않습니다.
-- 조회에는 `data_source_id`를 사용합니다. 얻는 방법:
-  1. `notion.databases.retrieve({ database_id })` 응답의 `data_sources[]`에서 확인
-  2. 노션 UI의 DB 설정(Manage data sources)에서 복사
-- 단일 data source DB라면 한 번 확인한 ID를 환경변수로 고정합니다(매 요청 retrieve는 레이트 리밋 낭비).
+| 항목                    | 값         | 이유(Task 016 실측)                                                                                |
+| ----------------------- | ---------- | -------------------------------------------------------------------------------------------------- |
+| `notionVersion`         | 2025-09-03 | SDK 업그레이드로 동작이 바뀌지 않게 명시                                                           |
+| `timeoutMs`             | 8000       | 정상 호출은 약 0.3초. 타임아웃은 SDK가 재시도하지 않음                                             |
+| `retry.maxRetries`      | 2          | 429만 재시도. 쿼리는 POST라 5xx는 재시도하지 않음                                                  |
+| `retry.maxRetryDelayMs` | 2000       | SDK 기본 60초면 노션이 큰 `Retry-After`를 줄 때 정상 사용자가 최대 수 분 기다림(실측: 20초 → 60초) |
 
-### 2.4 조회, filter, sorts, 페이지네이션
+## 7. 노션 설정 체크리스트 (처음 설정할 때)
 
-```ts
-const res = await notion.dataSources.query({
-  data_source_id,
-  filter: {
-    and: [{ property: '토큰', rich_text: { equals: token } }],
-  },
-  sorts: [{ timestamp: 'created_time', direction: 'descending' }],
-  page_size: 1,
-})
-// res.results[]: PageObjectResponse | PartialPageObjectResponse
-// res.has_more / res.next_cursor
-```
+- [ ] <https://www.notion.so/profile/integrations> 에서 Internal Integration을 만들고 **읽기 권한만**(Read content) 부여
+- [ ] 발급된 token을 `.env.local`(로컬) 또는 배포 환경의 `NOTION_API_KEY`에 저장(커밋 금지, `NEXT_PUBLIC_` 금지)
+- [ ] 견적서 DB 페이지와 품목 DB 페이지 **둘 다**에서 Connections로 Integration 추가(빠뜨리면 `object_not_found`로 500 오류)
+- [ ] 각 DB의 data source ID를 확인해 `NOTION_QUOTES_DATA_SOURCE_ID`, `NOTION_ITEMS_DATA_SOURCE_ID`에 저장(Database ID가 아님)
+- [ ] 위 2절 표와 같은 속성 이름·타입으로 DB를 구성하고, 견적서의 `항목`과 품목의 `Invoices`를 양방향 relation으로 연결
+- [ ] 견적서마다 `토큰`(text 타입)에 서로 다른 32자 무작위 문자열을 입력(README의 토큰 발급 참고)
+- [ ] 테스트 견적서 1건을 만들어 링크로 접속해 확인
 
-- Body 파라미터: `filter`(property/timestamp filter, `and`/`or` 복합), `sorts`(`property` 또는 `timestamp`), `start_cursor`, `page_size`(최대 100), `in_trash`, `result_type`.
-- 속성 타입별 filter 키: `title`/`rich_text`(equals, contains…), `number`, `date`(on_or_before…), `select`, `status`, `checkbox`, `relation`(contains) 등.
-- 전체 조회 헬퍼:
-  - `collectPaginatedAPI(notion.dataSources.query, {...})`: 전체 배열
-  - `iteratePaginatedAPI(...)`: async iterator
-  - `iterateAllDataSourceRows`: 약 10,000행 제한 초과 시
-- `request_status.incomplete_reason === 'query_result_limit_reached'`는 약 10k행 제한 도달을 뜻합니다(견적서 1건 조회에는 해당 없음).
-- 결과는 `PageObjectResponse`/`PartialPageObjectResponse`가 섞여 있으므로 `isFullPage()`로 좁힙니다.
+## 8. 속성을 바꿀 때 수정할 곳
 
-### 2.5 속성 타입별 응답 구조 (`page.properties[이름]`)
+| 변경                  | 함께 수정                                                                                                                           |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| 노션 속성 이름·타입   | `src/lib/notion-mappers.ts`의 `QUOTE_PROPS`/`ITEM_PROPS`와 매퍼, `src/lib/schemas/quote.ts`, 이 문서 2절, `docs/PRD.md` 데이터 모델 |
+| 새 필드를 화면에 표시 | 위 항목 + `src/components/quote/*`                                                                                                  |
+| 환경변수              | 1절 참고                                                                                                                            |
 
-| 타입                   | 응답 구조                                                                                   | 빈 값        |
-| ---------------------- | ------------------------------------------------------------------------------------------- | ------------ |
-| title                  | `{ type:'title', title: RichText[] }`                                                       | `[]`         |
-| rich_text              | `{ rich_text: RichText[] }` (각 항목 `plain_text`)                                          | `[]`         |
-| number                 | `{ number: number \| null }`                                                                | null         |
-| select                 | `{ select: {id,name,color} \| null }`                                                       | null         |
-| multi_select           | `{ multi_select: {id,name,color}[] }`                                                       | `[]`         |
-| status                 | `{ status: {id,name,color} \| null }`                                                       | null         |
-| date                   | `{ date: {start,end,time_zone} \| null }`                                                   | null         |
-| checkbox               | `{ checkbox: boolean }`                                                                     | -            |
-| url/email/phone_number | `{ url: string \| null }` 등                                                                | null         |
-| people                 | `{ people: User[] }`                                                                        | `[]`         |
-| relation               | `{ relation: {id}[], has_more }` (페이지 응답 25개 제한)                                    | `[]`         |
-| rollup                 | `{ rollup: { type:'number'\|'date'\|'array', ... } }`                                       | 타입별 분기  |
-| formula                | `{ formula: { type:'string'\|'number'\|'boolean'\|'date', ... } }`                          | 값 null 가능 |
-| files                  | `{ files: ({type:'file', file:{url,expiry_time}} \| {type:'external', external:{url}})[] }` | `[]`         |
-| created_time           | `{ created_time: ISO string }`                                                              | -            |
+## 9. 검증 방식 (테스트 데이터)
 
-- `title`/`rich_text` 인라인 멘션이 25개를 넘거나 relation이 25개를 넘으면 페이지 응답에서 생략됩니다. 완전한 값은 `pages.properties.retrieve`(`GET /v1/pages/{page_id}/properties/{property_id}`)로 `next_cursor`를 돌며 읽습니다.
-- 품목 수가 25개를 넘길 가능성이 있다면 relation 방식은 이 제한을 반드시 고려해야 합니다.
-
-### 2.6 블록(본문) 조회
-
-```ts
-import { collectPaginatedAPI, isFullBlock } from '@notionhq/client'
-
-const blocks = await collectPaginatedAPI(notion.blocks.children.list, {
-  block_id: pageId, // 페이지 ID도 block_id로 사용
-})
-// table 블록: block.type === 'table', has_children === true
-// 행: notion.blocks.children.list({ block_id: tableBlock.id }) → table_row.cells: RichText[][]
-```
-
-- `has_children`이 true인 블록은 재귀 조회가 필요하고, 호출마다 레이트 리밋을 소비합니다. 응답은 100개 단위 페이지네이션입니다.
-- 표 블록은 `table.has_column_header` 여부와 열 순서에 의존하므로 속성 이름 기반 매핑보다 취약합니다.
-
-### 2.7 에러 처리
-
-```ts
-import {
-  APIErrorCode,
-  ClientErrorCode,
-  isNotionClientError,
-} from '@notionhq/client'
-
-if (isNotionClientError(e)) {
-  switch (e.code) {
-    case APIErrorCode.ObjectNotFound: // 404: DB 미공유 또는 잘못된 ID
-    case APIErrorCode.Unauthorized: // 401: 토큰 오류
-    case APIErrorCode.RateLimited: // 429 (SDK 재시도 소진 후)
-    case ClientErrorCode.RequestTimeout:
-  }
-}
-```
-
-레이트 리밋은 평균 3 req/s입니다.
-
-## 3. 이 프로젝트에 적용할 권장 구조
-
-### 3.1 파일 구성
-
-```
-src/lib/env.ts                 # NOTION_API_KEY, NOTION_DATA_SOURCE_ID 추가 (서버 전용, NEXT_PUBLIC_ 금지)
-src/lib/notion.ts              # 클라이언트 + getQuoteByToken (server-only)
-src/lib/notion-mappers.ts      # 속성 타입별 헬퍼 (300줄 규칙 대응, 필요 시)
-src/lib/schemas/quote.ts       # quoteSchema, QuoteItem, Quote
-src/app/quote/[token]/page.tsx # Server Component
-src/app/quote/[token]/error.tsx
-src/app/quote/[token]/not-found.tsx
-```
-
-### 3.2 Zod 스키마 (zod v4)
-
-```ts
-// src/lib/schemas/quote.ts
-import { z } from 'zod'
-
-export const quoteItemSchema = z.object({
-  name: z.string().min(1),
-  quantity: z.number().nonnegative(),
-  unitPrice: z.number().nonnegative(),
-  amount: z.number().nonnegative(),
-})
-
-export const quoteSchema = z.object({
-  token: z.string().min(1),
-  quoteNumber: z.string().min(1),
-  clientName: z.string().min(1),
-  contactName: z.string().nullable(),
-  issuedAt: z.string().nullable(), // ISO
-  expiresAt: z.string().nullable(),
-  items: z.array(quoteItemSchema),
-  memo: z.string().nullable(),
-})
-export type Quote = z.infer<typeof quoteSchema>
-```
-
-### 3.3 조회 함수
-
-```ts
-// src/lib/notion.ts
-import 'server-only'
-import {
-  Client,
-  isFullPage,
-  isNotionClientError,
-  APIErrorCode,
-} from '@notionhq/client'
-import { quoteSchema, type Quote } from '@/lib/schemas/quote'
-
-const notion = new Client({
-  auth: process.env.NOTION_API_KEY,
-  timeoutMs: 10_000,
-  retry: { maxRetries: 3 },
-})
-
-const plain = (rt: { plain_text: string }[]) =>
-  rt.map(t => t.plain_text).join('')
-
-export async function getQuoteByToken(token: string): Promise<Quote | null> {
-  // 사전 방어: 비정상 토큰은 노션을 호출하지 않고 즉시 null
-  if (!/^[A-Za-z0-9_-]{16,128}$/.test(token)) return null
-  try {
-    const res = await notion.dataSources.query({
-      data_source_id: process.env.NOTION_DATA_SOURCE_ID!,
-      filter: { property: '토큰', rich_text: { equals: token } },
-      page_size: 1,
-    })
-    const page = res.results.find(isFullPage)
-    if (!page) return null
-    const p = page.properties
-    // 속성명/타입은 가정. 실제 템플릿 확인 후 확정 필요
-    const raw = {
-      token,
-      quoteNumber:
-        p['견적번호']?.type === 'rich_text'
-          ? plain(p['견적번호'].rich_text)
-          : '',
-      // ...나머지 속성, items는 3.5 참고
-    }
-    return quoteSchema.parse(raw) // 실패 시 ZodError → 서버 로그, 화면은 일반 에러
-  } catch (e) {
-    if (isNotionClientError(e) && e.code === APIErrorCode.ObjectNotFound) {
-      // 공유 누락 등 설정 문제: 로그만 남기고 고객에게는 일반 오류
-    }
-    throw e
-  }
-}
-```
-
-### 3.4 페이지
-
-```tsx
-// src/app/quote/[token]/page.tsx
-export default async function QuotePage({
-  params,
-}: {
-  params: Promise<{ token: string }>
-}) {
-  const { token } = await params // Next 15: params는 Promise
-  const quote = await getQuoteByToken(token)
-  if (!quote) notFound()
-  return <QuoteView quote={quote} />
-}
-```
-
-### 3.5 품목 모델링 옵션 (PRD 오픈 이슈)
-
-| 방식                       | 장점                                                             | 단점                                                                   |
-| -------------------------- | ---------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| A. 품목 별도 DB + Relation | 속성 타입이 명확하고 Zod 검증이 쉬움, 금액을 Formula로 계산 가능 | 호출 수 증가(견적 1 + 품목 N), relation 25개 제한, 품목 DB도 공유 필요 |
-| B. 페이지 본문의 표 블록   | 운영자가 입력하기 쉬움                                           | `blocks.children.list` 재귀 + 열 순서 의존, 타입 보장 없음             |
-| C. JSON 문자열 속성        | 호출 1회                                                         | 운영자 입력 오류 가능성이 높고 UX가 나쁨                               |
-
-**권장은 A**: 품목 DB에 `견적서(relation)`, `품목명(title)`, `수량(number)`, `단가(number)`, `금액(formula)` 구조를 두고, 품목 DB를 `relation contains page_id` 필터로 `dataSources.query`하면 25개 제한과 N+1 조회를 피할 수 있습니다(견적 페이지 조회 후 품목 DB 1회 쿼리).
-
-### 3.6 캐싱/revalidate
-
-- Notion SDK는 내부적으로 `fetch`를 쓰지만 Next가 캐시한다고 가정하지 않는 편이 안전합니다.
-  - MVP: `export const dynamic = 'force-dynamic'`로 매 요청 조회(PRD 결정과 일치)
-  - 트래픽 증가 시 `unstable_cache(getQuoteByToken, ['quote'], { revalidate: 60, tags: ['quote'] })`. 토큰을 캐시 키에 포함하고, 파일 URL 만료(약 1시간)보다 짧게 유지합니다.
-- 즉시 반영이 필요하면 `revalidateTag`를 호출하는 Route Handler를 두는 방안이 있습니다(웹훅은 Non-Goal이므로 후순위).
-
-### 3.7 에러 매핑 (PRD 7.2 대응)
-
-| 상황                                | 처리                                          |
-| ----------------------------------- | --------------------------------------------- |
-| 결과 없음 / 토큰 형식 불량          | `notFound()` (동일 응답으로 존재 여부 비노출) |
-| 만료(`expiresAt` < 오늘)            | 페이지에서 배너 표시 (조회는 허용)            |
-| 429/5xx/타임아웃                    | `error.tsx` "잠시 후 다시 시도" + reset 버튼  |
-| 401/403/object_not_found(설정 문제) | 서버 로그만, 고객에게는 일반 오류             |
-| ZodError                            | 서버 로그 후 일반 오류 (내부 구조 비노출)     |
-
-## 4. 주의사항
-
-1. **품목 모델링**: 3.5 참고. 속성은 flat 구조라 "행 안의 여러 줄"을 직접 표현할 수 없습니다.
-2. **파일 URL 만료**: `files`/내부 이미지의 `file.url`은 `expiry_time` 기준 약 1시간 후 만료됩니다. 로고는 PRD대로 `public/` 정적 자산으로 두고, 노션 파일은 저장하거나 장시간 캐시하지 않습니다. 인쇄/PDF 저장 직전 만료될 수 있음에 유의합니다.
-3. **토큰 보안**: `NOTION_API_KEY`는 서버 전용(`NEXT_PUBLIC_` 금지), `.env.local` 커밋 금지, `import 'server-only'`로 클라이언트 번들 유입 차단, 에러 응답/로그에 토큰과 원본 에러 body 비노출.
-4. **링크 토큰 강도**: 수동 입력 토큰은 추측 가능성이 있습니다. 16~32자 이상 랜덤 문자열을 쓰도록 운영 가이드가 필요하고, 유출 시 폐기(토큰 교체) 방법도 고지해야 합니다.
-5. **대량 조회**: `rich_text equals`는 정확 일치라 인젝션 위험은 낮지만, 길이/문자 제한으로 불필요한 호출을 차단합니다. `/quote/[token]` 대량 시도(토큰 열거)는 레이트 리밋 소진으로 이어질 수 있으므로 미들웨어 등 보호 장치를 후속 검토합니다.
-6. **토큰 속성 고유성**: 노션 DB에는 unique 제약이 없어 중복이 가능합니다. `page_size: 2`로 조회해 중복을 감지하는 방안을 권장합니다.
-7. **속성명 의존**: 속성 이름 변경은 곧바로 장애입니다. 속성명을 상수 한 곳에 모으고 Zod 실패를 로깅합니다. 속성 ID 기반 접근도 선택지입니다.
-8. **통화/숫자**: KRW 단일 통화이므로 number를 그대로 쓰되, 노션 Formula 값과 앱 계산 값 중 어느 쪽이 원본인지 결정합니다(PRD 성공 지표 "100% 일치").
-9. **버전 고정**: `notionVersion`을 코드에 명시하고, SDK 업그레이드 시 변경 로그를 확인합니다(v5에서 `databases.query` 제거, `archived`→`in_trash` 등).
-
-## 5. 노션 설정 체크리스트
-
-- [ ] https://www.notion.so/profile/integrations 에서 Internal Integration 생성 (권한: Read content만)
-- [ ] 발급된 token을 `.env.local`의 `NOTION_API_KEY`로 저장 (커밋 금지, `NEXT_PUBLIC_` 금지)
-- [ ] 견적서 DB 페이지에서 Connections로 Integration 추가 (품목 DB를 쓰면 그 DB도 추가)
-- [ ] 견적서 DB의 data source ID 확인 후 `NOTION_DATA_SOURCE_ID`로 저장 (품목 DB용 ID도 별도 필요)
-- [ ] 속성명과 타입을 PRD 7.3과 일치: `토큰`(Text), `견적번호`(Text), `고객사명`(Text), `담당자명`(Text), `발행일`(Date), `유효기간`(Date), `비고`(Text)
-- [ ] 품목 모델링 방식 확정 (권장: 별도 DB + Relation, 품목명 title / 수량 number / 단가 number / 금액 formula)
-- [ ] 합계(소계/부가세/총액)를 노션 Formula/Rollup으로 둘지, 앱에서 계산할지 결정
-- [ ] 토큰 생성 규칙 수립 (충분히 긴 랜덤 문자열, 중복 금지)
-- [ ] 테스트용 견적서 1건 작성 후 링크 접속 확인 (미공유 시 404 발생 여부 확인)
-
-## 6. 남은 위험·가정·후속 작업
-
-- 속성명/타입은 PRD 가정값이며 실제 노션 템플릿으로 확인되지 않았습니다. 구현 전 사용자 확인이 필요합니다.
-- 실제 Notion 호출 검증은 토큰이 없어 수행하지 못했습니다.
-- `docs/PRD.md` 경로 불일치(현재 `PRD@old.md`)는 문서 정리가 필요합니다.
-- 구현 시 `@notionhq/client`, `server-only` 설치가 필요하며, 변경 후 `npm run check-all`과 `npm run build`로 검증합니다.
-- 만료 견적서 정책(금액 비노출 여부), 토큰 열거 공격 대응, 캐시 도입 시점은 후속 결정 사항입니다.
+노션에 상시 테스트 데이터를 두지 않습니다. 검증할 때마다 **`TEMP-` 접두사 견적서와 연결 품목을 추가했다가 삭제**합니다(삭제 대상은 그 견적서와 거기에 연결된 품목뿐). 운영 데이터(실제 견적서)는 건드리지 않습니다.

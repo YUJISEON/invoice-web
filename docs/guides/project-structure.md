@@ -28,6 +28,7 @@ claude-nextjs-starters/
 src/app/
 ├── layout.tsx              # 🎨 루트 레이아웃 (ThemeProvider, 메타데이터)
 ├── page.tsx                # 🏠 루트 (링크 접속 안내)
+├── not-found.tsx           # ⚠️ 루트 404 (경로 없음, 유효하지 않은 링크 안내)
 ├── globals.css             # 🎨 전역 CSS 스타일
 ├── favicon.ico             # 🔖 파비콘
 └── quote/[token]/          # 📄 견적서 상세 (전용 링크 진입)
@@ -88,7 +89,14 @@ src/components/
 ```
 src/lib/
 ├── utils.ts           # 🛠️ 공통 유틸리티 함수
-└── env.ts             # 🔧 환경변수 검증
+├── env.ts             # 🔧 환경변수 검증
+├── format.ts          # 💱 원화·날짜 포맷 유틸 (formatKRW, formatDate)
+├── quote-status.ts    # ⏱️ 만료 판정 (isExpired, 한국 시간 기준)
+├── notion.ts          # 🔌 노션 클라이언트·getQuoteByToken (서버 전용)
+├── notion-mappers.ts  # 🗺️ 노션 속성명 상수·속성 매핑 헬퍼 (서버 전용)
+├── notion-errors.ts   # 🛡️ 오류 분류·일반 오류 변환 (서버 전용)
+└── schemas/
+    └── quote.ts       # 📋 견적서 Zod 스키마·타입, tokenSchema, sumItemAmounts
 ```
 
 **📚 lib/ 폴더 확장 가이드:**
